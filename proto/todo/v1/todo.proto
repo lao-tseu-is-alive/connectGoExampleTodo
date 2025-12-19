@@ -8,7 +8,12 @@ import "buf/validate/validate.proto";
 // Todo represents a single task.
 message Todo {
   string id = 1 [(buf.validate.field).string.uuid = true];
-  string title = 2 [(buf.validate.field).string.min_len = 1];
+  string title = 2 [
+    (buf.validate.field).string = {
+      min_len: 2,
+      max_len: 50,
+    }
+  ];
   string description = 3;
   bool completed = 4;
   google.protobuf.Timestamp created_at = 5;
@@ -17,7 +22,13 @@ message Todo {
 
 // CreateTodoRequest for creating a new todo.
 message CreateTodoRequest {
-  string title = 1 [(buf.validate.field).required = true];
+  string title = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string = {
+      min_len: 2,
+      max_len: 50,
+    }
+  ];
   string description = 2;
 }
 
@@ -50,7 +61,13 @@ message ListTodosResponse {
 
 // UpdateTodoRequest for updating a todo.
 message UpdateTodoRequest {
-  string id = 1 [(buf.validate.field).required = true];
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string = {
+      min_len: 2,
+      max_len: 50,
+    }
+  ];
   optional string title = 2;
   optional string description = 3;
   optional bool completed = 4;

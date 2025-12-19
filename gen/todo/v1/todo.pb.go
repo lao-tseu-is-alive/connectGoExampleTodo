@@ -602,18 +602,18 @@ var File_todo_v1_todo_proto protoreflect.FileDescriptor
 
 const file_todo_v1_todo_proto_rawDesc = "" +
 	"\n" +
-	"\x12todo/v1/todo.proto\x12\atodo.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bbuf/validate/validate.proto\"\xf5\x01\n" +
+	"\x12todo/v1/todo.proto\x12\atodo.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bbuf/validate/validate.proto\"\xf7\x01\n" +
 	"\x04Todo\x12\x18\n" +
-	"\x02id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\x02id\x12\x1d\n" +
-	"\x05title\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05title\x12 \n" +
+	"\x02id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\x02id\x12\x1f\n" +
+	"\x05title\x18\x02 \x01(\tB\t\xbaH\x06r\x04\x10\x02\x182R\x05title\x12 \n" +
 	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x1c\n" +
 	"\tcompleted\x18\x04 \x01(\bR\tcompleted\x129\n" +
 	"\n" +
 	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"S\n" +
-	"\x11CreateTodoRequest\x12\x1c\n" +
-	"\x05title\x18\x01 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\x05title\x12 \n" +
+	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"Y\n" +
+	"\x11CreateTodoRequest\x12\"\n" +
+	"\x05title\x18\x01 \x01(\tB\f\xbaH\t\xc8\x01\x01r\x04\x10\x02\x182R\x05title\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\"7\n" +
 	"\x12CreateTodoResponse\x12!\n" +
 	"\x04todo\x18\x01 \x01(\v2\r.todo.v1.TodoR\x04todo\"(\n" +
@@ -627,9 +627,9 @@ const file_todo_v1_todo_proto_rawDesc = "" +
 	"page_token\x18\x02 \x01(\tR\tpageToken\"`\n" +
 	"\x11ListTodosResponse\x12#\n" +
 	"\x05todos\x18\x01 \x03(\v2\r.todo.v1.TodoR\x05todos\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xb8\x01\n" +
-	"\x11UpdateTodoRequest\x12\x16\n" +
-	"\x02id\x18\x01 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\x02id\x12\x19\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xbe\x01\n" +
+	"\x11UpdateTodoRequest\x12\x1c\n" +
+	"\x02id\x18\x01 \x01(\tB\f\xbaH\t\xc8\x01\x01r\x04\x10\x02\x182R\x02id\x12\x19\n" +
 	"\x05title\x18\x02 \x01(\tH\x00R\x05title\x88\x01\x01\x12%\n" +
 	"\vdescription\x18\x03 \x01(\tH\x01R\vdescription\x88\x01\x01\x12!\n" +
 	"\tcompleted\x18\x04 \x01(\bH\x02R\tcompleted\x88\x01\x01B\b\n" +
