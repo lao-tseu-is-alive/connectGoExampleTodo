@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package todo.v1;
+
+import "google/protobuf/timestamp.proto";
+import "buf/validate/validate.proto";
+
+// Todo represents a single task.
+message Todo {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+  string title = 2 [(buf.validate.field).string.min_len = 1];
+  string description = 3;
+  bool completed = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+// CreateTodoRequest for creating a new todo.
+message CreateTodoRequest {
+  string title = 1 [(buf.validate.field).required = true];
+  string description = 2;
+}
+
+// CreateTodoResponse returns the created todo.
+message CreateTodoResponse {
+  Todo todo = 1;
+}
+
+// GetTodoRequest for fetching a single todo.
+message GetTodoRequest {
+  string id = 1 [(buf.validate.field).required = true];
+}
+
+// GetTodoResponse returns the todo.
+message GetTodoResponse {
+  Todo todo = 1;
+}
+
+// ListTodosRequest for listing todos (with pagination).
+message ListTodosRequest {
+  int32 page_size = 1 [(buf.validate.field).int32.gte = 1];
+  string page_token = 2;
+}
+
+// ListTodosResponse returns a list of todos.
+message ListTodosResponse {
+  repeated Todo todos = 1;
+  string next_page_token = 2;
+}
+
+// UpdateTodoRequest for updating a todo.
+message UpdateTodoRequest {
+  string id = 1 [(buf.validate.field).required = true];
+  optional string title = 2;
+  optional string description = 3;
+  optional bool completed = 4;
+}
+
+// UpdateTodoResponse returns the updated todo.
+message UpdateTodoResponse {
+  Todo todo = 1;
+}
+
+// DeleteTodoRequest for deleting a todo.
+message DeleteTodoRequest {
+  string id = 1 [(buf.validate.field).required = true];
+}
+
+// DeleteTodoResponse is empty on success.
+message DeleteTodoResponse {}
+
+// TodoService defines the CRUD operations.
+service TodoService {
+  rpc CreateTodo(CreateTodoRequest) returns (CreateTodoResponse) {}
+
+  rpc GetTodo(GetTodoRequest) returns (GetTodoResponse) {}
+
+  rpc ListTodos(ListTodosRequest) returns (ListTodosResponse) {}
+
+  rpc UpdateTodo(UpdateTodoRequest) returns (UpdateTodoResponse) {}
+
+  rpc DeleteTodo(DeleteTodoRequest) returns (DeleteTodoResponse) {}
+}

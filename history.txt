@@ -35,3 +35,1003 @@
  1120  lsa connectGoExampleTodo/
  1121  history 
 
+  124  // Position them at the bottom left or wherever you like
+  125  sDetection := NewSlider(10, float32(cfg.WorldHeight)-60, 200, "Detection Radius", 0, 200, float32(cfg.DetectionRadius))
+  126  sDefense := NewSlider(10, float32(cfg.WorldHeight)-30, 200, "Defense Radius", 0, 200, float32(cfg.DefenseRadius))
+  127  return &Game{
+  128  ctx:        ctx,
+  129  System:     system,
+  130  worldPID:   worldPID,
+  131  snapshotCh: snapshotCh,
+  132  lastState: &WorldSnapshot{
+  133  state:         protoimpl.MessageState{},
+  134  Actors:        nil,
+  135  RedCount:      0,
+  136  BlueCount:     0,
+  137  IsGameOver:    false,
+  138  Winner:        "",
+  139  unknownFields: nil,
+  140  sizeCache:     0,
+  141  }, // Avoid nil pointer
+  142  sliderDetection: sDetection,
+  143  sliderDefense:   sDefense,
+  144  cfg:             cfg,
+  145  }
+  146  }
+  147  func (g *Game) Update() error {
+  148  // 1. Update UI Inputs
+  149  g.sliderDetection.Update()
+  150  g.sliderDefense.Update()
+  151  // 2. Retrieve Latest State (Non-blocking) EARLY, so we can check IsGameOver before ticking
+  152  select {
+  153  case snap := <-g.snapshotCh:
+  154  g.lastState = snap
+  155  default:
+  156  // Use previous state if new one isn't ready
+  157  }
+  158  // ONLY send a Tick if the game is NOT over.
+  159  // This effectively "freezes" the simulation in the final state.
+  160  if !g.lastState.IsGameOver {
+  161  // 3. Send Updated Config to World (Fire and Forget)
+  162  // Only send if changed (optimization omitted for brevity)
+  163  g.System.NoSender().Tell(g.ctx, g.worldPID, &UpdateConfig{
+  164  DetectionRadius: g.sliderDetection.Value,
+  165  DefenseRadius:   g.sliderDefense.Value,
+  166  })
+  167  // 4. Trigger Simulation Step
+  168  // We tell the World: "It's time to process a frame"
+  169  g.System.NoSender().Tell(g.ctx, g.worldPID, &Tick{})
+  170  }
+  171  return nil
+  172  }
+  173  func (g *Game) Draw(screen *ebiten.Image) {
+  174  // 1. Draw all actors from the last known snapshot
+  175  if g.lastState != nil {
+  176  for _, entity := range g.lastState.Actors {
+  177  var clr color.Color
+  178  if entity.Color == TeamColor_TEAM_RED {
+  179  clr = color.RGBA{R: 255, G: 50, B: 50, A: 255}
+  180  if g.cfg.DisplayDetectionCircle {
+  181  vector.StrokeCircle(
+  182  screen,
+  183  float32(entity.Position.X),
+  184  float32(entity.Position.Y),
+  185  float32(g.sliderDetection.Value),
+  186  1,
+  187  clr,
+  188  true,
+  189  )
+  190  }
+  191  vector.FillCircle(
+  192  screen,
+  193  float32(entity.Position.X),
+  194  float32(entity.Position.Y),
+  195  6,
+  196  clr,
+  197  true,
+  198  )
+  199  } else {
+  200  // Blue Boids - Draw as Triangles
+  201  drawBoid(screen, entity)
+  202  // Optional: Draw Defense Radius ring if you want to see it
+  203  if g.cfg.DisplayDefenseCircle {
+  204  clr = color.RGBA{R: 50, G: 100, B: 255, A: 50} // Transparent blue
+  205  vector.StrokeCircle(
+  206  screen,
+  207  float32(entity.Position.X),
+  208  float32(entity.Position.Y),
+  209  float32(g.sliderDefense.Value),
+  210  1,
+  211  clr,
+  212  true,
+  213  )
+  214  }
+  215  }
+  216  }
+  217  }
+  218  // 2. Draw UI
+  219  g.sliderDetection.Draw(screen)
+  220  g.sliderDefense.Draw(screen)
+  221  // 3. Draw the New Stats Bar
+  222  g.drawStatsBar(screen)
+  223  // 4. Draw Game Over Overlay
+  224  if g.lastState.IsGameOver {
+  225  // Simple centered text
+  226  msg := fmt.Sprintf("GAME OVER\n%s is the WINNER !", g.lastState.Winner)
+  227  // You can use basic printing or fancy vector text here
+  228  ebitenutil.DebugPrintAt(screen, msg, int(g.cfg.WorldWidth/2-40), int(g.cfg.WorldHeight/2))
+  229  }
+  230  msg := fmt.Sprintf("Detection: %.0f\n\n\nDefense: %.0f\n\n",
+  231  g.sliderDetection.Value,
+  232  g.sliderDefense.Value)
+  233  ebitenutil.DebugPrint(screen, msg)
+  234  }
+  235  func (g *Game) drawStatsBar(screen *ebiten.Image) {
+  236  if g.lastState == nil {
+  237  return
+  238  }
+  239  reds := float32(g.lastState.RedCount)
+  240  blues := float32(g.lastState.BlueCount)
+  241  total := reds + blues
+  242  // Avoid divide by zero at start
+  243  if total == 0 {
+  244  return
+  245  }
+  246  // --- Configuration ---
+  247  barWidth := float32(200.0)
+  248  barHeight := float32(20.0)
+  249  marginTop := float32(10.0)
+  250  marginRight := float32(10.0)
+  251  // Calculate Position (Top Right)
+  252  // screen.Bounds().Dx() gives current window width
+  253  screenW := float32(screen.Bounds().Dx())
+  254  x := screenW - barWidth - marginRight
+  255  y := marginTop
+  256  // Calculate Ratios
+  257  redRatio := reds / total
+  258  redW := barWidth * redRatio
+  259  blueW := barWidth - redW
+  260  // --- Draw Bars ---
+  261  // 1. Red Bar (Left side of the stack)
+  262  vector.FillRect(screen, x, y, redW, barHeight, color.RGBA{R: 255, G: 50, B: 50, A: 255}, true)
+  263  // 2. Blue Bar (Right side, starts where Red ends)
+  264  vector.FillRect(screen, x+redW, y, blueW, barHeight, color.RGBA{R: 50, G: 100, B: 255, A: 255}, true)
+  265  // --- Draw Text Below ---
+  266  // Position text under the respective colors
+  267  // Red Count
+  268  redMsg := fmt.Sprintf("%d", int(reds))
+  269  ebitenutil.DebugPrintAt(screen, redMsg, int(x), int(y+barHeight+5))
+  270  // Blue Count (Aligned to the end of the bar roughly)
+  271  blueMsg := fmt.Sprintf("%d", int(blues))
+  272  // A simple hack to align right: subtract estimated text width (approx 8px per char)
+  273  textOffset := float32(len(blueMsg) * 8)
+  274  ebitenutil.DebugPrintAt(screen, blueMsg, int(x+barWidth-textOffset), int(y+barHeight+5))
+  275  }
+  276  func (g *Game) Layout(w, h int) (int, int) { return int(g.cfg.WorldWidth), int(g.cfg.WorldHeight) }
+  277  var whiteImage = ebiten.NewImage(3, 3)
+  278  func init() {
+  279  whiteImage.Fill(color.RGBA{R: 100, G: 200, B: 255, A: 255})
+  280  }
+  281  func drawBoid(screen *ebiten.Image, b *ActorState) {
+  282  angle := math.Atan2(b.Velocity.Y, b.Velocity.X)
+  283  // Visual geometry logic
+  284  tipX := b.Position.X + math.Cos(angle)*6
+  285  tipY := b.Position.Y + math.Sin(angle)*6
+  286  rightX := b.Position.X + math.Cos(angle+2.5)*5
+  287  rightY := b.Position.Y + math.Sin(angle+2.5)*5
+  288  leftX := b.Position.X + math.Cos(angle-2.5)*5
+  289  leftY := b.Position.Y + math.Sin(angle-2.5)*5
+  290  // Define the 3 vertices of the triangle
+  291  vertices := []ebiten.Vertex{
+  292  {
+  293  DstX: float32(tipX),
+  294  DstY: float32(tipY),
+  295  SrcX: 1, SrcY: 1,
+  296  ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1,
+  297  },
+  298  {
+  299  DstX: float32(rightX),
+  300  DstY: float32(rightY),
+  301  SrcX: 1, SrcY: 1,
+  302  ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1,
+  303  },
+  304  {
+  305  DstX: float32(leftX),
+  306  DstY: float32(leftY),
+  307  SrcX: 1, SrcY: 1,
+  308  ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1,
+  309  },
+  310  }
+  311  indices := []uint16{0, 1, 2}
+  312  op := &ebiten.DrawTrianglesOptions{}
+  313  screen.DrawTriangles(vertices, indices, whiteImage, op)
+  314  }
+  315  EOF
+  316  go build ./...
+  317  cat go.mod
+  318  go mod tidy
+  319  go build ./...
+  320  cat pkg/simulation/world.go
+  321  cat pkg/simulation/slider.go
+  322  head -n 10 pkg/simulation/world.go
+  323  head -n 10 pkg/simulation/slider.go
+  324  grep "func NewWorld" pkg/simulation/world.go
+  325  grep "func NewSlider" pkg/simulation/slider.go
+  326  cat pkg/simulation/slider.go
+  327  grep -A 10 "type WorldActor struct" pkg/simulation/world.go
+  328  cat cmd/simulation/main.go
+  329  cat <<'EOF' > pkg/simulation/slider.go
+  330  package simulation
+  331  import (
+  332  "image/color"
+  333  "github.com/hajimehoshi/ebiten/v2"
+  334  "github.com/hajimehoshi/ebiten/v2/vector"
+  335  )
+  336  // Slider is a simple UI widget
+  337  type Slider struct {
+  338  Label    string
+  339  Value    float64
+  340  Min, Max float64
+  341  X, Y     float64
+  342  W, H     float64
+  343  }
+  344  // NewSlider creates a new slider instance
+  345  func NewSlider(x, y, w float64, label string, min, max, value float64) *Slider {
+  346  return &Slider{
+  347  Label: label,
+  348  Value: value,
+  349  Min:   min,
+  350  Max:   max,
+  351  X:     x,
+  352  Y:     y,
+  353  W:     w,
+  354  H:     20, // Default height
+  355  }
+  356  }
+  357  // Update checks for mouse interaction
+  358  func (s *Slider) Update() {
+  359  mx, my := ebiten.CursorPosition()
+  360  // Check if mouse is clicking inside the slider area
+  361  if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
+  362  if float64(mx) >= s.X && float64(mx) <= s.X+s.W &&
+  363  float64(my) >= s.Y && float64(my) <= s.Y+s.H {
+  364  // Calculate value based on horizontal position
+  365  p := (float64(mx) - s.X) / s.W
+  366  s.Value = s.Min + p*(s.Max-s.Min)
+  367  // Clamp value
+  368  if s.Value < s.Min {
+  369  s.Value = s.Min
+  370  }
+  371  if s.Value > s.Max {
+  372  s.Value = s.Max
+  373  }
+  374  }
+  375  }
+  376  }
+  377  // Draw renders the slider
+  378  func (s *Slider) Draw(screen *ebiten.Image) {
+  379  // Draw Background (Dark Gray)
+  380  vector.FillRect(screen, float32(s.X), float32(s.Y), float32(s.W), float32(s.H), color.RGBA{R: 80, G: 80, B: 80, A: 255}, true)
+  381  // Draw Value Bar (Light Gray/White)
+  382  ratio := (s.Value - s.Min) / (s.Max - s.Min)
+  383  vector.FillRect(screen, float32(s.X), float32(s.Y), float32(s.W*ratio), float32(s.H), color.RGBA{R: 200, G: 200, B: 200, A: 255}, true)
+  384  }
+  385  EOF
+  386  cat <<'EOF' > pkg/simulation/game.go
+  387  package simulation
+  388  import (
+  389  "context"
+  390  "fmt"
+  391  "image/color"
+  392  "math"
+  393  "github.com/hajimehoshi/ebiten/v2"
+  394  "github.com/hajimehoshi/ebiten/v2/ebitenutil"
+  395  "github.com/hajimehoshi/ebiten/v2/vector"
+  396  "github.com/tochemey/goakt/v3/actor"
+  397  "google.golang.org/protobuf/runtime/protoimpl"
+  398  )
+  399  type Game struct {
+  400  ctx        context.Context
+  401  System     actor.ActorSystem
+  402  worldPID   *actor.PID
+  403  snapshotCh chan *WorldSnapshot
+  404  lastState  *WorldSnapshot
+  405  // UI Controls
+  406  sliderDetection *Slider
+  407  sliderDefense   *Slider
+  408  cfg *Config
+  409  }
+  410  func GetNewGame(ctx context.Context, cfg *Config, system actor.ActorSystem) *Game {
+  411  // 1. Create Channels for communication
+  412  snapshotCh := make(chan *WorldSnapshot, 10) // Buffer to avoid blocking
+  413  // 2. Spawn World Actor
+  414  // We pass the channel to the World so it can push updates to us.
+  415  // Note: NewWorldActor signature is (snapshotCh, cfg)
+  416  worldActor := NewWorldActor(snapshotCh, cfg)
+  417  worldPID, err := system.Spawn(ctx, worldActor)
+  418  if err != nil {
+  419  panic(fmt.Sprintf("Failed to spawn world: %v", err))
+  420  }
+  421  // 3. Initialize Sliders
+  422  // Position them at the bottom left or wherever you like
+  423  sDetection := NewSlider(10, float64(cfg.WorldHeight)-60, 200, "Detection Radius", 0, 200, cfg.DetectionRadius)
+  424  sDefense := NewSlider(10, float64(cfg.WorldHeight)-30, 200, "Defense Radius", 0, 200, cfg.DefenseRadius)
+  425  return &Game{
+  426  ctx:        ctx,
+  427  System:     system,
+  428  worldPID:   worldPID,
+  429  snapshotCh: snapshotCh,
+  430  lastState: &WorldSnapshot{
+  431  state:         protoimpl.MessageState{},
+  432  Actors:        nil,
+  433  RedCount:      0,
+  434  BlueCount:     0,
+  435  IsGameOver:    false,
+  436  Winner:        "",
+  437  unknownFields: nil,
+  438  sizeCache:     0,
+  439  }, // Avoid nil pointer
+  440  sliderDetection: sDetection,
+  441  sliderDefense:   sDefense,
+  442  cfg:             cfg,
+  443  }
+  444  }
+  445  func (g *Game) Update() error {
+  446  // 1. Update UI Inputs
+  447  g.sliderDetection.Update()
+  448  g.sliderDefense.Update()
+  449  // 2. Retrieve Latest State (Non-blocking) EARLY, so we can check IsGameOver before ticking
+  450  select {
+  451  case snap := <-g.snapshotCh:
+  452  g.lastState = snap
+  453  default:
+  454  // Use previous state if new one isn't ready
+  455  }
+  456  // ONLY send a Tick if the game is NOT over.
+  457  // This effectively "freezes" the simulation in the final state.
+  458  if !g.lastState.IsGameOver {
+  459  // 3. Send Updated Config to World (Fire and Forget)
+  460  // Only send if changed (optimization omitted for brevity)
+  461  // In goakt, Tell is a method on the PID or Context?
+  462  // Usually: ctx.Tell(pid, msg) or actor.Tell(ctx, pid, msg)
+  463  // Looking at goakt docs or usage: system.Tell(ctx, pid, msg) isn't standard?
+  464  // Usually we use the context we have.
+  465  // Wait, main.go passes a context.
+  466  // Let's check how to send messages from outside an actor in goakt.
+  467  // Usually: actor.Tell(ctx, pid, message)
+  468  actor.Tell(g.ctx, g.worldPID, &UpdateConfig{
+  469  DetectionRadius: g.sliderDetection.Value,
+  470  DefenseRadius:   g.sliderDefense.Value,
+  471  })
+  472  // 4. Trigger Simulation Step
+  473  // We tell the World: "It's time to process a frame"
+  474  actor.Tell(g.ctx, g.worldPID, &Tick{})
+  475  }
+  476  return nil
+  477  }
+  478  func (g *Game) Draw(screen *ebiten.Image) {
+  479  // 1. Draw all actors from the last known snapshot
+  480  if g.lastState != nil {
+  481  for _, entity := range g.lastState.Actors {
+  482  var clr color.Color
+  483  if entity.Color == TeamColor_TEAM_RED {
+  484  clr = color.RGBA{R: 255, G: 50, B: 50, A: 255}
+  485  if g.cfg.DisplayDetectionCircle {
+  486  vector.StrokeCircle(
+  487  screen,
+  488  float32(entity.Position.X),
+  489  float32(entity.Position.Y),
+  490  float32(g.sliderDetection.Value),
+  491  1,
+  492  clr,
+  493  true,
+  494  )
+  495  }
+  496  vector.FillCircle(
+  497  screen,
+  498  float32(entity.Position.X),
+  499  float32(entity.Position.Y),
+  500  6,
+  501  clr,
+  502  true,
+  503  )
+  504  } else {
+  505  // Blue Boids - Draw as Triangles
+  506  drawBoid(screen, entity)
+  507  // Optional: Draw Defense Radius ring if you want to see it
+  508  if g.cfg.DisplayDefenseCircle {
+  509  clr = color.RGBA{R: 50, G: 100, B: 255, A: 50} // Transparent blue
+  510  vector.StrokeCircle(
+  511  screen,
+  512  float32(entity.Position.X),
+  513  float32(entity.Position.Y),
+  514  float32(g.sliderDefense.Value),
+  515  1,
+  516  clr,
+  517  true,
+  518  )
+  519  }
+  520  }
+  521  }
+  522  }
+  523  // 2. Draw UI
+  524  g.sliderDetection.Draw(screen)
+  525  g.sliderDefense.Draw(screen)
+  526  // 3. Draw the New Stats Bar
+  527  g.drawStatsBar(screen)
+  528  // 4. Draw Game Over Overlay
+  529  if g.lastState.IsGameOver {
+  530  // Simple centered text
+  531  msg := fmt.Sprintf("GAME OVER\n%s is the WINNER !", g.lastState.Winner)
+  532  // You can use basic printing or fancy vector text here
+  533  ebitenutil.DebugPrintAt(screen, msg, int(g.cfg.WorldWidth/2-40), int(g.cfg.WorldHeight/2))
+  534  }
+  535  msg := fmt.Sprintf("Detection: %.0f\n\n\nDefense: %.0f\n\n",
+  536  g.sliderDetection.Value,
+  537  g.sliderDefense.Value)
+  538  ebitenutil.DebugPrint(screen, msg)
+  539  }
+  540  func (g *Game) drawStatsBar(screen *ebiten.Image) {
+  541  if g.lastState == nil {
+  542  return
+  543  }
+  544  reds := float32(g.lastState.RedCount)
+  545  blues := float32(g.lastState.BlueCount)
+  546  total := reds + blues
+  547  // Avoid divide by zero at start
+  548  if total == 0 {
+  549  return
+  550  }
+  551  // --- Configuration ---
+  552  barWidth := float32(200.0)
+  553  barHeight := float32(20.0)
+  554  marginTop := float32(10.0)
+  555  marginRight := float32(10.0)
+  556  // Calculate Position (Top Right)
+  557  // screen.Bounds().Dx() gives current window width
+  558  screenW := float32(screen.Bounds().Dx())
+  559  x := screenW - barWidth - marginRight
+  560  y := marginTop
+  561  // Calculate Ratios
+  562  redRatio := reds / total
+  563  redW := barWidth * redRatio
+  564  blueW := barWidth - redW
+  565  // --- Draw Bars ---
+  566  // 1. Red Bar (Left side of the stack)
+  567  vector.FillRect(screen, x, y, redW, barHeight, color.RGBA{R: 255, G: 50, B: 50, A: 255}, true)
+  568  // 2. Blue Bar (Right side, starts where Red ends)
+  569  vector.FillRect(screen, x+redW, y, blueW, barHeight, color.RGBA{R: 50, G: 100, B: 255, A: 255}, true)
+  570  // --- Draw Text Below ---
+  571  // Position text under the respective colors
+  572  // Red Count
+  573  redMsg := fmt.Sprintf("%d", int(reds))
+  574  ebitenutil.DebugPrintAt(screen, redMsg, int(x), int(y+barHeight+5))
+  575  // Blue Count (Aligned to the end of the bar roughly)
+  576  blueMsg := fmt.Sprintf("%d", int(blues))
+  577  // A simple hack to align right: subtract estimated text width (approx 8px per char)
+  578  textOffset := float32(len(blueMsg) * 8)
+  579  ebitenutil.DebugPrintAt(screen, blueMsg, int(x+barWidth-textOffset), int(y+barHeight+5))
+  580  }
+  581  func (g *Game) Layout(w, h int) (int, int) { return int(g.cfg.WorldWidth), int(g.cfg.WorldHeight) }
+  582  var whiteImage = ebiten.NewImage(3, 3)
+  583  func init() {
+  584  whiteImage.Fill(color.RGBA{R: 100, G: 200, B: 255, A: 255})
+  585  }
+  586  func drawBoid(screen *ebiten.Image, b *ActorState) {
+  587  angle := math.Atan2(b.Velocity.Y, b.Velocity.X)
+  588  // Visual geometry logic
+  589  tipX := b.Position.X + math.Cos(angle)*6
+  590  tipY := b.Position.Y + math.Sin(angle)*6
+  591  rightX := b.Position.X + math.Cos(angle+2.5)*5
+  592  rightY := b.Position.Y + math.Sin(angle+2.5)*5
+  593  leftX := b.Position.X + math.Cos(angle-2.5)*5
+  594  leftY := b.Position.Y + math.Sin(angle-2.5)*5
+  595  // Define the 3 vertices of the triangle
+  596  vertices := []ebiten.Vertex{
+  597  {
+  598  DstX: float32(tipX),
+  599  DstY: float32(tipY),
+  600  SrcX: 1, SrcY: 1,
+  601  ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1,
+  602  },
+  603  {
+  604  DstX: float32(rightX),
+  605  DstY: float32(rightY),
+  606  SrcX: 1, SrcY: 1,
+  607  ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1,
+  608  },
+  609  {
+  610  DstX: float32(leftX),
+  611  DstY: float32(leftY),
+  612  SrcX: 1, SrcY: 1,
+  613  ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1,
+  614  },
+  615  }
+  616  indices := []uint16{0, 1, 2}
+  617  op := &ebiten.DrawTrianglesOptions{}
+  618  screen.DrawTriangles(vertices, indices, whiteImage, op)
+  619  }
+  620  EOF
+  621  go build ./...
+  622  grep "Spawn" pkg/simulation/game.go
+  623  cat pkg/simulation/game.go
+  624  sed -i 's/worldPID, err := system.Spawn(ctx, worldActor)/worldPID, err := system.Spawn(ctx, "world", worldActor)/' pkg/simulation/game.go
+  625  go build ./...
+  626  timeout 2s ./simulation
+  627  sed -i '/LogFormat:       "json",/a \\
+  628                  DisplayDetectionCircle: false,\
+  629                  DisplayDefenseCircle:   false,' pkg/simulation/config.go
+  630  go test -bench=. ./internal/simulation/...
+  631  scripts/genGoCodeFromProto.sh 
+  632  go test -bench=. ./internal/simulation/...
+  633  scripts/genGoCodeFromProto.sh 
+  634  go test -bench=. ./internal/simulation/...
+  635  go test -bench=. ./pkg/simulation/...
+  636  scripts/genGoCodeFromProto.sh 
+  637  go test -bench=. ./pkg/simulation/...
+  638  scripts/genGoCodeFromProto.sh 
+  639  go mod tidy
+  640  lsa
+  641  cp config.json config_scenario_10_times_less_red_butthey_wind.json
+  642  lsa scripts/
+  643  scripts/tag_new_release.sh 
+  644  go build ./cmd/simulation
+  645  go build -o simulation ./cmd/simulation
+  646  timeout 15 ./simulation -cpuprofile=cpu.prof 2>&1 || true
+  647  go tool pprof -top -cum cpu.prof 2>/dev/null | head -40
+  648  go tool pprof -text cpu.prof 2>&1 | head -50
+  649  go build -o simulation ./cmd/simulation && echo "Build successful"
+  650  timeout 10 ./simulation 2>&1 | tail -5 || echo "Simulation ran for 10 seconds"
+  651  timeout 8 ./simulation 2>&1 | grep -E "(FPS|Update|Draw|MSG)" | tail -10 || echo "Done"
+  652  go build -o simulation ./cmd/simulation && echo "Build successful"
+  653  go build -o simulation ./cmd/simulation && echo "Build successful"
+  654  protoc --go_out=. --go_opt=paths=source_relative pb/simulation.proto
+  655  rm pkg/simulation/simulation.pb.go && protoc --go_out=. --go_opt=paths=source_relative pb/simulation.proto
+  656  go build ./...
+  657  go build ./...
+  658  go build ./...
+  659  go run cmd/simulation/main.go
+  660  mkdir -p pkg/ui
+  661  mv pkg/simulation/slider.go pkg/ui/slider.go
+  662  mv pkg/simulation/checkbox.go pkg/ui/checkbox.go
+  663  mv pkg/simulation/ui_panel.go pkg/ui/ui_panel.go
+  664  go build ./...
+  665  go run cmd/simulation/main.go
+  666  cat >> pkg/simulation/game.go << 'EOF'
+  667  // restartSimulation stops the current world and spawns a new one with current config
+  668  func (g *Game) restartSimulation() {
+  669  // Stop current world
+  670  if g.worldPID != nil {
+  671  _ = g.System.Stop(g.ctx, g.worldPID)
+  672  }
+  673  // Clear trails
+  674  g.trails = make(map[string][]geometry.Vector2D)
+  675  // Update config with current widget values
+  676  g.cfg.DetectionRadius = g.widgetDetectionRadius.Value
+  677  g.cfg.DefenseRadius = g.widgetDefenseRadius.Value
+  678  g.cfg.ContactRadius = g.widgetContactRadius.Value
+  679  g.cfg.VisualRange = g.widgetVisualRange.Value
+  680  g.cfg.ProtectedRange = g.widgetProtectedRange.Value
+  681  g.cfg.MaxSpeed = g.widgetMaxSpeed.Value
+  682  g.cfg.MinSpeed = g.widgetMinSpeed.Value
+  683  g.cfg.Aggression = g.widgetAggression.Value
+  684  g.cfg.CenteringFactor = g.widgetCenteringFactor.Value
+  685  g.cfg.AvoidFactor = g.widgetAvoidFactor.Value
+  686  g.cfg.MatchingFactor = g.widgetMatchingFactor.Value
+  687  g.cfg.TurnFactor = g.widgetTurnFactor.Value
+  688  g.cfg.NumRedAtStart = int(g.widgetNumRed.Value)
+  689  g.cfg.NumBlueAtStart = int(g.widgetNumBlue.Value)
+  690  g.cfg.DisplayDetectionCircle = g.widgetDisplayDetection.Value
+  691  g.cfg.DisplayDefenseCircle = g.widgetDisplayDefense.Value
+  692  // Spawn new world
+  693  worldActor := NewWorldActor(g.snapshotCh, g.cfg)
+  694  worldPID, err := g.System.Spawn(g.ctx, "world", worldActor)
+  695  if err != nil {
+  696  // If spawn fails, keep the old PID
+  697  return
+  698  }
+  699  g.worldPID = worldPID
+  700  }
+  701  EOF
+  702  go build ./...
+  703  go build ./...
+  704  go run cmd/simulation/main.go
+  705  go build ./...
+  706  go build ./...
+  707  go run cmd/simulation/main.go
+  708  go build ./...
+  709  go run cmd/simulation/main.go
+  710  go build ./...
+  711  go build ./...
+  712  antigravity &
+  713  dmesg 
+  714  lsa cgdev/golang/
+  715  lsa cgdev/golang/go-geo-tree-table/
+  716  lsa cgdev/golang/go-geo-tree-table/.github/
+  717  lsa cgdev/golang/go-geo-tree-table/.github/workflows/
+  718  diff cgdev/golang/go-geo-tree-table/.github/workflows/release.yml  cgdev/golang/goDirHasher/.github/workflows/release.yml 
+  719  sudo mkdir -p /etc/apt/keyrings
+  720  curl -fsSL https://us-central1-apt.pkg.dev/doc/repo-signing-key.gpg |   sudo gpg --dearmor -o /etc/apt/keyrings/antigravity-repo-key.gpg
+  721  echo "deb [signed-by=/etc/apt/keyrings/antigravity-repo-key.gpg] https://us-central1-apt.pkg.dev/projects/antigravity-auto-updater-dev/ antigravity-debian main" |   sudo tee /etc/apt/sources.list.d/antigravity.list > /dev/null
+  722  sudo apt update
+  723  sudo vim /etc/apt/sources.list.d/antigravity.list
+  724  sudo apt install antigravity
+  725  antigravity &
+  726  tools/goland/bin/goland &
+  727  tools/webstorm/bin/webstorm &
+  728  antigravity &
+  729  go version
+  730  GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build  -ldflags="$LDFLAGS" -o goSwarmSimulation-darwin-amd64 ./cmd/simulation
+  731  go mod tidy
+  732  scripts/tag_new_release.sh 
+  733  env GOOS=js GOARCH=wasm go build -o goSwarmSimulation.wasm cmd/simulation/main.go 
+  734  lsa
+  735  rm goSwarmSimulation-windows-amd64.exe 
+  736  go mod why -m go.etcd.io/bbolt
+  737  lsa pkg/golog/
+  738  mv src/components/oldLogin.ts src/components/oldLogin_to_delete.ts 
+  739  mv src/components/oldLogin_to_delete.ts old/
+  740  go build -o bin/server ./cmd/goCloudK8sThingServer
+  741  make test
+  742  make test
+  743  make test
+  744  make test
+  745  go test -v ./pkg/thing/business_service_test.go ./pkg/thing/business_service.go ./pkg/thing/errors.go ./pkg/thing/thing_types.gen.go ./pkg/thing/messages.go ./pkg/thing/thing_rules.go ./pkg/thing/storage.go -count=1
+  746  go test -v ./pkg/thing -run TestBusinessService
+  747  go mod tidy
+  748  go test -v ./pkg/thing -run TestBusinessService -count=1
+  749  go test -v ./pkg/thing -run TestBusinessService -count=1
+  750  go test -v ./pkg/thing -run TestBusinessService -count=1
+  751  go test -v ./pkg/thing -run TestBusinessService -count=1
+  752  go test -v ./pkg/thing -run TestBusinessService -count=1 2>&1 | head -100
+  753  go test -v ./pkg/thing -run TestBusinessService -count=1 2>&1 | head -50
+  754  go test -v ./pkg/thing -run TestBusinessService -count=1 -timeout 10s
+  755  go test -v ./pkg/thing -run TestBusinessService -count=1 -timeout 10s 2>&1 | tail -40
+  756  go test -v ./pkg/thing -run TestBusinessService -count=1 -timeout 10s 2>&1 | tail -20
+  757  go test -v ./pkg/thing -run TestBusinessService -cover -count=1
+  758  go test -v ./pkg/thing -run TestValidateName -count=1
+  759  cd /home/cgil/cgdev/golang/go-cloud-k8s-thing && go get connectrpc.com/vanguard@latest
+  760  grep -n "JwtChecker\|GetCustomClaims\|GetToken" /home/cgil/go/pkg/mod/github.com/lao-tseu-is-alive/go-cloud-k8s-common-libs@*/pkg/goHttpEcho/*.go 2>/dev/null | head -50 || echo "checking return type"
+  761  cat /home/cgil/go/pkg/mod/github.com/lao-tseu-is-alive/go-cloud-k8s-common-libs@v0.3.25/pkg/goHttpEcho/jwt.go | head -80
+  762  cd /home/cgil/cgdev/golang/go-cloud-k8s-thing && go build ./...
+  763  cd /home/cgil/cgdev/golang/go-cloud-k8s-thing && go test ./pkg/thing/... -v 2>&1 | head -100
+  764  cd /home/cgil/cgdev/golang/go-cloud-k8s-thing && go test ./pkg/thing/... -v -run "TestThingConnectServer|TestTypeThingConnectServer" 2>&1
+  765  cd /home/cgil/cgdev/golang/go-cloud-k8s-thing && go test ./pkg/thing/... -v -run "TestThingConnectServer|TestTypeThingConnectServer" 2>&1
+  766  cd /home/cgil/cgdev/golang/go-cloud-k8s-thing && go build ./... 2>&1
+  767  cd /home/cgil/cgdev/golang/go-cloud-k8s-thing && go build ./... 2>&1
+  768  cd /home/cgil/cgdev/golang/go-cloud-k8s-thing && go test ./... 2>&1
+  769  cd /home/cgil/cgdev/golang/go-cloud-k8s-thing && git checkout api/proto/thing/v1/thing.proto api/proto/thing/v1/type_thing.proto
+  770  cd /home/cgil/cgdev/golang/go-cloud-k8s-thing && go build ./... 2>&1
+  771  cd /home/cgil/cgdev/golang/go-cloud-k8s-thing && make test 2>&1 | tail -100
+  772  cd /home/cgil/cgdev/golang/go-cloud-k8s-thing && make test 2>&1 | tail -80
+  773  cd /home/cgil/cgdev/golang/go-cloud-k8s-thing && make test 2>&1 | tail -60
+  774  cd /home/cgil/cgdev/golang/go-cloud-k8s-thing && make test 2>&1 | tail -50
+  775  cd /home/cgil/cgdev/golang/go-cloud-k8s-thing && make test 2>&1 | tail -20
+  776  cd /home/cgil/cgdev/golang/go-cloud-k8s-thing && docker build -t go-cloud-k8s-thing:test . 2>&1 | tail -30
+  777  go build ./...
+  778  go test ./pkg/thing/... -v -count=1
+  779  go test ./pkg/thing/... -v -count=1
+  780  go build ./...
+  781  go test ./pkg/thing/... -v -count=1
+  782  lsa
+  783  lsa api/
+  784  go install github.com/bufbuild/buf/cmd/buf@v1.61.0
+  785  go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+  786  go install connectrpc.com/connect/cmd/protoc-gen-connect-go@latest
+  787  buf config init
+  788  history 6 >scripts/install_go_protobuf_tools.sh
+  789  chmod a+x scripts/install_go_protobuf_tools.sh
+  790  go version
+  791  go mod tidy
+  792  scripts/githubCreateSecrets.sh 
+  793  lsa scripts/
+  794  scripts/02_tag_new_release_github.sh 
+  795  go mod tidy
+  796  scripts/02_tag_new_release_github.sh 
+  797  lsa scripts/
+  798  cat scripts/githubCreateSecrets.sh 
+  799  scripts/githubCreateSecrets.sh 
+  800  make test
+  801  lsa scripts/
+  802  buf dep update
+  803  buf generate
+  804  buf dep update
+  805  lsa
+  806  cat .gitignore 
+  807  buf dep update
+  808  buf --version
+  809  lsa
+  810  rm buf.yaml 
+  811  rm buf.lock 
+  812  lsa
+  813  cd api/
+  814  lsa
+  815  mkdir proto
+  816  mv thing proto/
+  817  lsa
+  818  cd proto/
+  819  lsa
+  820  lsa 
+  821  touch buf.yaml
+  822  cd ..
+  823  buf dep update api/proto
+  824  buf generate api/proto
+  825  history 4 >scripts/buf_generate.sh
+  826  diff api/openapi/thing/v1/thing.swagger.yaml api/thing.yaml 
+  827  lsa scripts/
+  828  chmod a+x scripts/buf_generate.sh 
+  829  lsa scripts/
+  830  scripts/buf_generate.sh 
+  831  go mod tidy
+  832  scripts/buf_generate.sh 
+  833  lsa api/
+  834  lsa api/openapi/
+  835  lsa api/openapi/thing
+  836  lsa api/openapi/thing/v1/
+  837  lsa api/openapi/
+  838  buf export buf.build/googleapis/googleapis --output api/proto/third_party
+  839  scripts/buf_generate.sh 
+  840  lsa
+  841  mv third_party/ proto_third_party
+  842  scripts/buf_generate.sh 
+  843  lsa pkg/thing/
+  844  make test
+  845  scripts/02_tag_new_release_github.sh 
+  846  go mod tidy
+  847  scripts/02_tag_new_release_github.sh 
+  848  make test
+  849  go test -race -coverprofile coverage.out -coverpkg=./... ./...
+  850  git status
+  851  scripts/02_tag_new_release_github.sh 
+  852  lsa pkg/golog/
+  853  go mod tidy
+  854  lsa scripts
+  855  scripts/tag_new_release.sh 
+  856  top
+  857  lsa
+  858  lsa Documents/
+  859  lsa Documents/goeland/
+  860  rsync -av vortex64:/home/cgil/Documents/goeland/database Documents/goeland/
+  861  pdftk
+  862  lsa bin/
+  863  ss -tln
+  864  sudo ss -tlnp
+  865  lsa /etc/nginx/sites-enabled/
+  866  cat /etc/nginx/sites-enabled/pulsar-2021.lausanne.ch 
+  867  cat /etc/hosts
+  868  vim /etc/hosts
+  869  go version
+  870  lsa cgdev/golang/
+  871  lsa cgdev/golang/go-geo-tree-table
+  872  cat cgdev/golang/go-geo-tree-table/go.mod 
+  873  podman --version
+  874  dpkq -l |podman
+  875  dpkq -l |grep podman
+  876  dpkg -l |grep podman
+  877  dapr version 
+  878  dapr
+  879  dapr status
+  880  dapr uninstall
+  881  dapr status
+  882  whereis dapr
+  883  lsa /usr/local/bin/dapr
+  884  /usr/local/bin/dapr version
+  885  dapr status
+  886  dapr version
+  887  dapr --container-runtime podman init
+  888  dapr --container-runtime podman uninstall
+  889  dapr --container-runtime podman init
+  890  podman ps
+  891  dapr status 
+  892  podman ps
+  893  lsa .dapr/
+  894  lsa .dapr/bin/
+  895  dapr dashboard 
+  896  dapr run --app-id myapp --dapr-http-port 3500
+  897  docker --version
+  898  trivy image ghcr.io/lao-tseu-is-alive/go-cloud-k8s-thing:latest
+  899  trivy image ghcr.io/lao-tseu-is-alive/go-cloud-k8s-thing:v0.2.2
+  900  tools/goland/bin/goland &
+  901  cd
+  902  tools/goland/bin/goland &
+  903  antigravity &
+  904  lsa Documents/
+  905  lsa Documents/goeland/
+  906  tools/webstorm/bin/webstorm &
+  907  antigravity &
+  908  lsa scripts/
+  909  scripts/tag_new_release.sh 
+  910  cat go.mod
+  911  go build ./...
+  912  go build ./...
+  913  go test ./...
+  914  grep -n "context.Background()" pkg/database/postgres.go
+  915  go build ./...
+  916  grep -n "context.Background()" pkg/database/postgres.go
+  917  go build ./...
+  918  rm /home/cgil/cgdev/golang/go-cloud-k8s-common-libs/pkg/config/factory.go
+  919  go build ./pkg/config ./pkg/goHttpEcho
+  920  go build ./pkg/... 2>&1 | head -20
+  921  go build ./cmd/minServer/... 2>&1
+  922  go build ./cmd/... 2>&1 | head -30
+  923  go build ./cmd/... 2>&1
+  924  go build ./... 2>&1
+  925  go test ./pkg/config/... 2>&1
+  926  go build ./pkg/golog/...
+  927  go test -v ./pkg/golog/... -run Slog
+  928  go test -v ./pkg/golog/... -run "Colored|Slog"
+  929  go run -e - <<'EOF'
+  930  package main
+  931  import (
+  932  "os"
+  933  "github.com/lao-tseu-is-alive/go-cloud-k8s-common-libs/pkg/golog"
+  934  )
+  935  func main() {
+  936  // Development: colored output
+  937  logger := golog.NewSlogLogger("colored", os.Stdout, golog.DebugLevel)
+  938  logger.Debug("processing request", "method", "GET", "path", "/api/users")
+  939  logger.Info("server started", "port", 8080, "env", "development")
+  940  logger.Warn("slow query detected", "duration_ms", 1500)
+  941  logger.Error("connection failed", "host", "db.example.com")
+  942  // Child logger with preset attributes
+  943  reqLogger := logger.With("request_id", "abc-123")
+  944  reqLogger.Info("handling authenticated request", "user_id", 42)
+  945  println("\n--- JSON output (for production) ---")
+  946  jsonLogger := golog.NewSlogLogger("json", os.Stdout, golog.InfoLevel)
+  947  jsonLogger.Info("server started", "port", 8080)
+  948  }
+  949  EOF
+  950  cd /home/cgil/cgdev/golang/go-cloud-k8s-common-libs && go test -v ./pkg/golog/... -run Example 2>&1 | head -30
+  951  cd /home/cgil/cgdev/golang/go-cloud-k8s-common-libs && go test -v ./pkg/golog -run "^$" -count=1 2>&1; echo "--- Running example manually ---"; go test ./pkg/golog -v -run "^ExampleTestNotReal$" 2>&1 || true
+  952  go run ./pkg/golog/cmd/demo/
+  953  rm /home/cgil/cgdev/golang/go-cloud-k8s-common-libs/pkg/golog/simple_logger.go /home/cgil/cgdev/golang/go-cloud-k8s-common-libs/pkg/golog/zap_logger.go
+  954  rm -rf /home/cgil/cgdev/golang/go-cloud-k8s-common-libs/pkg/golog/cmd
+  955  go build ./...
+  956  go build ./...
+  957  go test ./pkg/golog/... -v 2>&1 | head -50
+  958  cat > /tmp/slog_demo.go <<'EOF'
+  959  package main
+  960  import (
+  961  "os"
+  962  "github.com/lao-tseu-is-alive/go-cloud-k8s-common-libs/pkg/golog"
+  963  )
+  964  func main() {
+  965  l := golog.NewLogger("colored", os.Stdout, golog.DebugLevel, "demo")
+  966  l.Debug("processing request", "method", "GET", "path", "/api/users")
+  967  l.Info("server started", "port", 8080, "env", "development")
+  968  l.Warn("slow query detected", "duration_ms", 1500)
+  969  l.Error("connection failed", "host", "db.example.com")
+  970  // Show JSON output too
+  971  println("\n--- JSON output (for production) ---")
+  972  jsonL := golog.NewLogger("json", os.Stdout, golog.InfoLevel, "demo")
+  973  jsonL.Info("server started", "port", 8080, "env", "production")
+  974  }
+  975  EOF
+  976  go run /tmp/slog_demo.go
+  977  go build ./...
+  978  scripts/GoTestWithEnv.sh .env 2>&1 | head -80
+  979  go tool cover -func=coverage.txt 2>/dev/null | tail -20
+  980  ./scripts/GoTestWithEnv.sh .env 2>&1 | tail -50
+  981  ./scripts/GoTestWithEnv.sh .env 2>&1 | grep -E "(FAIL|error|Error|panic)" | head -30
+  982  go build ./pkg/goHttpEcho/... 2>&1
+  983  go test -c ./pkg/goHttpEcho/... 2>&1
+  984  ./scripts/GoTestWithEnv.sh .env 2>&1 | tail -80
+  985  ./scripts/GoTestWithEnv.sh .env 2>&1 | grep -E "(FAIL|--- FAIL)" | head -20
+  986  ./scripts/GoTestWithEnv.sh .env 2>&1 | grep -E "(^ok|^FAIL|^\\?|total:)" | tail -20
+  987  go tool cover -func=coverage.txt | tail -1
+  988  go test -c ./pkg/database/... ./pkg/metadata/... 2>&1
+  989  ./scripts/GoTestWithEnv.sh .env 2>&1 | grep -E "(^ok|^FAIL|^\\?|total:)" | tail -20
+  990  go test -v ./cmd/minServer/... 2>&1 | head -50
+  991  ./scripts/GoTestWithEnv.sh .env 2>&1 | grep -E "(FAIL|error|panic)" | head -20
+  992  ./scripts/GoTestWithEnv.sh .env 2>&1 | grep -E "(--- FAIL:|FAIL\s+github)" | head -10
+  993  ./scripts/GoTestWithEnv.sh .env 2>&1 | grep -A 5 "TestMainExec/2:_Get_on_/health" | head -15
+  994  ./scripts/GoTestWithEnv.sh .env 2>&1 | grep -E "(^ok|^FAIL|^\\?|total:|--- FAIL)" | tail -25
+  995  ./scripts/GoTestWithEnv.sh .env 2>&1 | grep -A 10 "TestMainExec/7:_POST_to_login" | head -20
+  996  go tool cover -func=coverage.txt | tail -1
+  997  go test -c ./cmd/minServer/... ./cmd/goEmployeJwtServer/... 2>&1
+  998  go tool cover -func=coverage.txt | grep -E "^(github|total)" | tail -20
+  999  go mod tidy
+ 1000  scripts/GoTestWithEnv.sh .env_testing 
+ 1001  go mod tidy
+ 1002  scripts/GoTestWithEnv.sh .env_testing 
+ 1003  go doc github.com/lao-tseu-is-alive/go-cloud-k8s-common-libs/pkg/goHttpEcho.Authenticator 2>/dev/null || head -100 go.mod
+ 1004  cat $(go env GOMODCACHE)/github.com/lao-tseu-is-alive/go-cloud-k8s-common-libs@v0.6.2/pkg/goHttpEcho/authenticator.go 2>/dev/null | head -100
+ 1005  find $(go env GOMODCACHE)/github.com/lao-tseu-is-alive/go-cloud-k8s-common-libs@v0.6.2 -name "*.go" | xargs grep -l "AuthenticateUser" 2>/dev/null | head -5
+ 1006  grep -A 5 "AuthenticateUser" /home/cgil/go/pkg/mod/github.com/lao-tseu-is-alive/go-cloud-k8s-common-libs@v0.6.2/pkg/goHttpEcho/simpleAuthenticator.go
+ 1007  go build ./cmd/goCloudK8sThingServer/...
+ 1008  grep -r "type MyLogger" /home/cgil/go/pkg/mod/github.com/lao-tseu-is-alive/go-cloud-k8s-common-libs@v0.6.2/pkg/golog/ 2>/dev/null || echo "MyLogger type not found in v0.6.2"
+ 1009  go build ./...
+ 1010  go build ./...
+ 1011  go build ./...
+ 1012  go build ./...
+ 1013  go test ./pkg/thing/... -v -count=1 2>&1 | head -100
+ 1014  grep -n "HealthCheck" /home/cgil/go/pkg/mod/github.com/lao-tseu-is-alive/go-cloud-k8s-common-libs@v0.6.2/pkg/database/*.go | head -20
+ 1015  go test ./pkg/thing/... -v -count=1 2>&1 | head -80
+ 1016  go build ./...
+ 1017  go test ./pkg/thing/... -v -count=1 2>&1 | head -100
+ 1018  go test ./pkg/thing/... -v -count=1 2>&1 | head -80
+ 1019  grep -n "JWT_AUTH_URL" /home/cgil/cgdev/golang/go-cloud-k8s-thing/.env_testing
+ 1020  grep -n "CreateNewServerFromEnv\|Static\|Catch" /home/cgil/go/pkg/mod/github.com/lao-tseu-is-alive/go-cloud-k8s-common-libs@v0.6.2/pkg/goHttpEcho/*.go | head -30
+ 1021  sed -n '55,120p' /home/cgil/go/pkg/mod/github.com/lao-tseu-is-alive/go-cloud-k8s-common-libs@v0.6.2/pkg/goHttpEcho/server.go
+ 1022  git log --oneline -10
+ 1023  git diff HEAD~5 -- cmd/goCloudK8sThingServer/goCloudK8sThingServer.go 2>/dev/null | head -100
+ 1024  grep -A5 "e.POST(jwtAuthUrl" /home/cgil/cgdev/golang/go-cloud-k8s-thing/cmd/goCloudK8sThingServer/goCloudK8sThingServer.go
+ 1025  echo $JWT_AUTH_URL
+ 1026  cat /home/cgil/cgdev/golang/go-cloud-k8s-thing/.env_testing | grep -E "^(JWT_|PORT|ADMIN)" | head -15
+ 1027  grep -A10 "func GetJwtAuthUrl" /home/cgil/go/pkg/mod/github.com/lao-tseu-is-alive/go-cloud-k8s-common-libs@v0.6.2/pkg/config/*.go
+ 1028  go run -v ./cmd/goCloudK8sThingServer 2>&1 &
+ 1029  sleep 2
+ 1030  curl -v -X POST http://localhost:9292/login -d 'login=test&hashed=test' 2>&1
+ 1031  pkill -f goCloudK8sThingServer
+ 1032  sed -n '30,120p' /home/cgil/go/pkg/mod/github.com/lao-tseu-is-alive/go-cloud-k8s-common-libs@v0.6.2/pkg/goHttpEcho/server.go
+ 1033  grep -n "JWT_AUTH_URL" /home/cgil/cgdev/golang/go-cloud-k8s-thing/.env_testing
+ 1034  cat /home/cgil/cgdev/golang/go-cloud-k8s-thing/.env_testing 2>/dev/null | head -20
+ 1035  bash -c 'source /home/cgil/cgdev/golang/go-cloud-k8s-thing/.env_testing && echo "JWT_AUTH_URL=[$JWT_AUTH_URL]"'
+ 1036  cat /home/cgil/cgdev/golang/go-cloud-k8s-thing/scripts/GoTestWithEnv.sh
+ 1037  bash -c 'echo "Testing sed transformation:"; echo '\''JWT_AUTH_URL="/login"'\'' | sed -e "s/'"'"'/'"'"'\\\\'"'"''"'"'/g" -e "s/=\\(.*\\)/='"'"'\\1'"'"'/g"'
+ 1038  sed -i 's/JWT_AUTH_URL="\/login"/JWT_AUTH_URL=\/login/' /home/cgil/cgdev/golang/go-cloud-k8s-thing/.env_testing
+ 1039  grep "JWT_AUTH_URL\|JWT_ISSUER_ID" /home/cgil/cgdev/golang/go-cloud-k8s-thing/.env_testing
+ 1040  sed -i 's/JWT_ISSUER_ID="96964007-912E-44E9-A3F1-D98364128FAA"/JWT_ISSUER_ID=96964007-912E-44E9-A3F1-D98364128FAA/' /home/cgil/cgdev/golang/go-cloud-k8s-thing/.env_testing
+ 1041  grep 'ALLOWED_HOSTS' /home/cgil/cgdev/golang/go-cloud-k8s-thing/.env_testing
+ 1042  sed -i 's/ALLOWED_HOSTS="localhost"/ALLOWED_HOSTS=localhost/' /home/cgil/cgdev/golang/go-cloud-k8s-thing/.env_testing
+ 1043  scripts/GoTestWithEnv.sh .env_testing 2>&1 | tail -80
+ 1044  go test -v -run TestBusinessService_Create ./pkg/thing/ && go test -v -run TestBusinessService_Update ./pkg/thing/
+ 1045  go test -v -run TestBusinessService_Create ./pkg/thing/ && go test -v -run TestBusinessService_Update ./pkg/thing/
+ 1046  go test -v ./pkg/thing/
+ 1047  go test -v ./pkg/thing/
+ 1048  clear
+ 1049  scripts/GoTestWithEnv.sh .env_testing 
+ 1050  lsa cmd/
+ 1051  scripts/GoTestWithEnv.sh .env_testing 
+ 1052  go tool cover -func=coverage.txt | tail -1
+ 1053  scripts/GoTestWithEnv.sh .env_testing 
+ 1054  lsa scripts/
+ 1055  scripts/02_tag_new_release_github.sh
+ 1056  make test
+ 1057  scripts/GoRunWithEnv.sh 
+ 1058  scripts/GoRunWithEnv.sh .env
+ 1059  scripts/GoRunWithEnv.sh cmd/minServer/goCloudK8sExampleMinimalServer.go 
+ 1060  scripts/GoRunWithEnv.sh cmd/goCloudK8sExampleServer/goCloudK8sExampleServer
+ 1061  scripts/GoRunWithEnv.sh cmd/goCloudK8sExampleServer/goCloudK8sExampleServer.go 
+ 1062  scripts/tag_new_release.sh 
+ 1063  scripts/GoTestWithEnv.sh 
+ 1064  scripts/GoTestWithEnv.sh .env
+ 1065  scripts/tag_new_release.sh 
+ 1066  scripts/GoTestWithEnv.sh .env
+ 1067  go mod tidy
+ 1068  scripts/GoTestWithEnv.sh .env
+ 1069  scripts/tag_new_release.sh 
+ 1070  scripts/GoTestWithEnv.sh .env
+ 1071  scripts/tag_new_release.sh 
+ 1072  scripts/GoTestWithEnv.sh .env
+ 1073  cat scripts/GoTestWithEnv.sh
+ 1074  lsa cmd/goCloudK8sExampleServer
+ 1075  scripts/GoTestWithEnv.sh .env
+ 1076  go tool cover -func=coverage.txt | tail -1
+ 1077  go tool cover -func=coverage.txt 
+ 1078  lsa scripts/
+ 1079  chmod a+x  scripts/setup-template.sh 
+ 1080  scripts/setup-template.sh 
+ 1081  lsa cmd/goCloudK8sThingServer
+ 1082  scripts/setup-template.sh 
+ 1083  lsa ..
+ 1084  lsa ../go-cloud-k8s-todo
+ 1085  cat ../go-cloud-k8s-todo/go.mod 
+ 1086  go mod init github.com/lao-tseu-is-alive/connectGoExampleTodo
+ 1087  go install github.com/bufbuild/buf/cmd/buf@latest
+ 1088  go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+ 1089  go install connectrpc.com/connect/cmd/protoc-gen-connect-go@latest
+ 1090  pwd
+ 1091  buf --version
+ 1092  mkdir -p api/proto
+ 1093  lsa ../go-cloud-k8s-todo/api/
+ 1094  lsa ../go-cloud-k8s-todo/api/proto/
+ 1095  mkdir -p api/proto/todo/v1
+ 1096  lsa ../go-cloud-k8s-todo/api/proto/todo/v1/
+ 1097  lsa ~/
+ 1098  lsa ~/.cache
+ 1099  lsa ~/.cache/buf/
+ 1100  lsa ~/.cache/buf/v3/
+ 1101  lsa ~/.cache/buf/v3/module
+ 1102  lsa ~/.cache/buf/v3/modules
+ 1103  env
+ 1104  env | grep -i LOCAL
+ 1105  lsa ~/.cache/buf/
+ 1106  find ~/.cache/buf/  -name *.proto
+ 1107  buf config init
+ 1108  buf mod init
+ 1109  cat go.mod
+ 1110  buf config init
+ 1111  buf dep update
+ 1112  buf lint
+ 1113  buf dep update
+ 1114  buf generate
+ 1115  mkdir -p cmd/server/
+ 1116  touch  cmd/server/main.go
+ 1117  go mod tidy
+ 1118  go run cmd/server/main.go 
+ 1119  go get connectrpc.com/connect
+ 1120  go get connectrpc.com/validate
+ 1121  go get buf.build/go/protovalidate
+ 1122  go run cmd/server/main.go 
+ 1123  history >> history.txt 

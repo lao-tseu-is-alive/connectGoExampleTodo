@@ -12,7 +12,7 @@ managed:
   enabled: true
   override:
     - file_option: go_package_prefix
-      value: example/gen
+      value: github.com/lao-tseu-is-alive/connectGoExampleTodo/gen
   disable:
     - file_option: go_package
       module: buf.build/bufbuild/protovalidate
