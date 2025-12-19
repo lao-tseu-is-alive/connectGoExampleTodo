@@ -1,0 +1,37 @@
+1086  go mod init github.com/lao-tseu-is-alive/connectGoExampleTodo
+ 1087  go install github.com/bufbuild/buf/cmd/buf@latest
+ 1088  go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+ 1089  go install connectrpc.com/connect/cmd/protoc-gen-connect-go@latest
+ 1090  pwd
+ 1091  buf --version
+ 1092  mkdir -p api/proto
+ 1093  lsa ../go-cloud-k8s-todo/api/
+ 1094  lsa ../go-cloud-k8s-todo/api/proto/
+ 1095  mkdir -p api/proto/todo/v1
+ 1096  lsa ../go-cloud-k8s-todo/api/proto/todo/v1/
+ 1097  lsa ~/
+ 1098  lsa ~/.cache
+ 1099  lsa ~/.cache/buf/
+ 1100  lsa ~/.cache/buf/v3/
+ 1101  lsa ~/.cache/buf/v3/module
+ 1102  lsa ~/.cache/buf/v3/modules
+ 1103  env
+ 1104  env | grep -i LOCAL
+ 1105  lsa ~/.cache/buf/
+ 1106  find ~/.cache/buf/  -name *.proto
+ 1107  buf config init
+ 1108  buf mod init
+ 1109  cat go.mod
+ 1110  buf config init
+ 1111  buf dep update
+ 1112  buf lint
+ 1113  buf dep update
+ 1114  buf generate
+ 1115  mkdir -p cmd/server/
+ 1116  touch  cmd/server/main.go
+ 1117  go mod tidy
+ 1118  cd ..
+ 1119  lsa
+ 1120  lsa connectGoExampleTodo/
+ 1121  history 
+
