@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package todo.v1;
 
+import "google/api/annotations.proto";
 import "google/protobuf/timestamp.proto";
 import "buf/validate/validate.proto";
 
@@ -88,13 +89,35 @@ message DeleteTodoResponse {}
 
 // TodoService defines the CRUD operations.
 service TodoService {
-  rpc CreateTodo(CreateTodoRequest) returns (CreateTodoResponse) {}
+  rpc CreateTodo(CreateTodoRequest) returns (CreateTodoResponse) {
+    option (google.api.http) = {
+      post: "/v1/todos"
+      body: "*"
+    };
+  }
 
-  rpc GetTodo(GetTodoRequest) returns (GetTodoResponse) {}
+  rpc GetTodo(GetTodoRequest) returns (GetTodoResponse) {
+    option (google.api.http) = {
+      get: "/v1/todos/{id}"
+    };
+  }
 
-  rpc ListTodos(ListTodosRequest) returns (ListTodosResponse) {}
+  rpc ListTodos(ListTodosRequest) returns (ListTodosResponse) {
+    option (google.api.http) = {
+      get: "/v1/todos"
+    };
+  }
 
-  rpc UpdateTodo(UpdateTodoRequest) returns (UpdateTodoResponse) {}
+  rpc UpdateTodo(UpdateTodoRequest) returns (UpdateTodoResponse) {
+    option (google.api.http) = {
+      put: "/v1/todos/{id}"
+      body: "*"
+    };
+  }
 
-  rpc DeleteTodo(DeleteTodoRequest) returns (DeleteTodoResponse) {}
+  rpc DeleteTodo(DeleteTodoRequest) returns (DeleteTodoResponse) {
+    option (google.api.http) = {
+      delete: "/v1/todos/{id}"
+    };
+  }
 }

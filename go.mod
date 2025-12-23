@@ -6,9 +6,10 @@ require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.10-20251209175733-2a1774d88802.1
 	connectrpc.com/connect v1.19.1
 	connectrpc.com/validate v0.6.0
+	connectrpc.com/vanguard v0.3.0
 	github.com/google/uuid v1.6.0
-	github.com/rs/cors v1.11.1
-	golang.org/x/net v0.37.0
+	github.com/lao-tseu-is-alive/go-cloud-k8s-common-libs v0.6.3
+	google.golang.org/genproto/googleapis/api v0.0.0-20250922171735-9219d122eba9
 	google.golang.org/protobuf v1.36.10
 )
 
@@ -19,7 +20,6 @@ require (
 	github.com/google/cel-go v0.26.1 // indirect
 	github.com/stoewer/go-strcase v1.3.1 // indirect
 	golang.org/x/exp v0.0.0-20250911091902-df9299821621 // indirect
-	golang.org/x/text v0.29.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20250922171735-9219d122eba9 // indirect
+	golang.org/x/text v0.32.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250922171735-9219d122eba9 // indirect
 )

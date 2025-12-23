@@ -8,6 +8,7 @@ package todov1
 
 import (
 	_ "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
+	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -602,7 +603,7 @@ var File_todo_v1_todo_proto protoreflect.FileDescriptor
 
 const file_todo_v1_todo_proto_rawDesc = "" +
 	"\n" +
-	"\x12todo/v1/todo.proto\x12\atodo.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bbuf/validate/validate.proto\"\xf7\x01\n" +
+	"\x12todo/v1/todo.proto\x12\atodo.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bbuf/validate/validate.proto\"\xf7\x01\n" +
 	"\x04Todo\x12\x18\n" +
 	"\x02id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\x02id\x12\x1f\n" +
 	"\x05title\x18\x02 \x01(\tB\t\xbaH\x06r\x04\x10\x02\x182R\x05title\x12 \n" +
@@ -641,16 +642,16 @@ const file_todo_v1_todo_proto_rawDesc = "" +
 	"\x04todo\x18\x01 \x01(\v2\r.todo.v1.TodoR\x04todo\"+\n" +
 	"\x11DeleteTodoRequest\x12\x16\n" +
 	"\x02id\x18\x01 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\x02id\"\x14\n" +
-	"\x12DeleteTodoResponse2\xee\x02\n" +
-	"\vTodoService\x12G\n" +
+	"\x12DeleteTodoResponse2\xd8\x03\n" +
+	"\vTodoService\x12[\n" +
 	"\n" +
-	"CreateTodo\x12\x1a.todo.v1.CreateTodoRequest\x1a\x1b.todo.v1.CreateTodoResponse\"\x00\x12>\n" +
-	"\aGetTodo\x12\x17.todo.v1.GetTodoRequest\x1a\x18.todo.v1.GetTodoResponse\"\x00\x12D\n" +
-	"\tListTodos\x12\x19.todo.v1.ListTodosRequest\x1a\x1a.todo.v1.ListTodosResponse\"\x00\x12G\n" +
+	"CreateTodo\x12\x1a.todo.v1.CreateTodoRequest\x1a\x1b.todo.v1.CreateTodoResponse\"\x14\x82\xd3\xe4\x93\x02\x0e:\x01*\"\t/v1/todos\x12T\n" +
+	"\aGetTodo\x12\x17.todo.v1.GetTodoRequest\x1a\x18.todo.v1.GetTodoResponse\"\x16\x82\xd3\xe4\x93\x02\x10\x12\x0e/v1/todos/{id}\x12U\n" +
+	"\tListTodos\x12\x19.todo.v1.ListTodosRequest\x1a\x1a.todo.v1.ListTodosResponse\"\x11\x82\xd3\xe4\x93\x02\v\x12\t/v1/todos\x12`\n" +
 	"\n" +
-	"UpdateTodo\x12\x1a.todo.v1.UpdateTodoRequest\x1a\x1b.todo.v1.UpdateTodoResponse\"\x00\x12G\n" +
+	"UpdateTodo\x12\x1a.todo.v1.UpdateTodoRequest\x1a\x1b.todo.v1.UpdateTodoResponse\"\x19\x82\xd3\xe4\x93\x02\x13:\x01*\x1a\x0e/v1/todos/{id}\x12]\n" +
 	"\n" +
-	"DeleteTodo\x12\x1a.todo.v1.DeleteTodoRequest\x1a\x1b.todo.v1.DeleteTodoResponse\"\x00B\x9b\x01\n" +
+	"DeleteTodo\x12\x1a.todo.v1.DeleteTodoRequest\x1a\x1b.todo.v1.DeleteTodoResponse\"\x16\x82\xd3\xe4\x93\x02\x10*\x0e/v1/todos/{id}B\x9b\x01\n" +
 	"\vcom.todo.v1B\tTodoProtoP\x01ZDgithub.com/lao-tseu-is-alive/connectGoExampleTodo/gen/todo/v1;todov1\xa2\x02\x03TXX\xaa\x02\aTodo.V1\xca\x02\aTodo\\V1\xe2\x02\x13Todo\\V1\\GPBMetadata\xea\x02\bTodo::V1b\x06proto3"
 
 var (
